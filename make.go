@@ -23,10 +23,6 @@ func NewTarget(prerequisites []string) *Target {
 	return &t
 }
 
-func (t *Target) AddCommand(command string) {
-	t.Commands = append(t.Commands, command)
-}
-
 type Graph map[string]*Target
 
 // TODO: loop check
@@ -107,7 +103,7 @@ func run() error {
 			}
 
 			command := strings.TrimSpace(line)
-			target.AddCommand(command)
+			target.Commands = append(target.Commands, command)
 
 			continue
 		}
