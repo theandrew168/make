@@ -1,2 +1,3 @@
 # make
-Simple Make implementation in Go
+
+Subset of [POSIX Make](https://pubs.opengroup.org/onlinepubs/9699919799/utilities/make.html) implemented in Go
