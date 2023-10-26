@@ -6,12 +6,15 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 )
 
 // POSIX make spec:
 // https://pubs.opengroup.org/onlinepubs/9699919799/utilities/make.html
 
 type Target struct {
+	sync.Once
+
 	Prerequisites []string
 	Commands      []string
 }
@@ -25,8 +28,6 @@ func NewTarget(prerequisites []string) *Target {
 
 type Graph map[string]*Target
 
-// TODO: loop check
-// TODO: concurrency
 func execute(graph Graph, name string) error {
 	// lookup current target
 	target, ok := graph[name]
@@ -35,23 +36,34 @@ func execute(graph Graph, name string) error {
 	}
 
 	// execute any prerequisites (recursive call)
+	var wg sync.WaitGroup
 	for _, preprequisite := range target.Prerequisites {
-		execute(graph, preprequisite)
+		preprequisite := preprequisite
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			execute(graph, preprequisite)
+		}()
 	}
+	wg.Wait()
 
 	// execute current target (base case)
-	for _, command := range target.Commands {
-		fmt.Println(command)
+	target.Do(func() {
+		for _, command := range target.Commands {
+			fmt.Println(command)
 
-		fields := strings.Fields(command)
-		cmd, args := fields[0], fields[1:]
-		out, err := exec.Command(cmd, args...).Output()
-		if err != nil {
-			return err
+			fields := strings.Fields(command)
+			cmd, args := fields[0], fields[1:]
+			out, err := exec.Command(cmd, args...).CombinedOutput()
+			if err != nil {
+				fmt.Print(string(out))
+				fmt.Println(err)
+			} else {
+				fmt.Print(string(out))
+			}
 		}
-
-		fmt.Print(string(out))
-	}
+	})
 
 	return nil
 }
@@ -99,7 +111,7 @@ func run() error {
 		if line[0] == '\t' {
 			target, ok := graph[current]
 			if !ok {
-				return fmt.Errorf("target does not exist: %s", target)
+				return fmt.Errorf("target does not exist: %s", current)
 			}
 
 			command := strings.TrimSpace(line)
