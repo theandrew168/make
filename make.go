@@ -36,6 +36,8 @@ func execute(graph Graph, name string) error {
 		return fmt.Errorf("target does not exist: %s", name)
 	}
 
+	errors := make(chan error)
+
 	// execute any prerequisites (recursive call)
 	var wg sync.WaitGroup
 	for _, preprequisite := range target.Prerequisites {
@@ -44,27 +46,66 @@ func execute(graph Graph, name string) error {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			execute(graph, preprequisite)
+			err := execute(graph, preprequisite)
+			if err != nil {
+				errors <- err
+			}
 		}()
 	}
-	wg.Wait()
+
+	// turn wg.Wait() into a select-able channel
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	// check for errors / wait for prerequisites to finish
+	select {
+	case <-done:
+	case err := <-errors:
+		return err
+	}
 
 	// execute current target (base case)
+	var commandErr error
 	target.Do(func() {
 		for _, command := range target.Commands {
 			fmt.Println(command)
 
+			var env []string
+			var prog string
+			var args []string
+
 			fields := strings.Fields(command)
-			cmd, args := fields[0], fields[1:]
-			out, err := exec.Command(cmd, args...).CombinedOutput()
+			for _, field := range fields {
+				// check for env vars
+				if prog == "" && strings.Contains(field, "=") {
+					env = append(env, field)
+					continue
+				}
+				// set the prog name if not set
+				if prog == "" {
+					prog = field
+					continue
+				}
+				// all other fields are args
+				args = append(args, field)
+			}
+
+			cmd := exec.Command(prog, args...)
+			cmd.Env = append(cmd.Environ(), env...)
+
+			out, err := cmd.CombinedOutput()
 			fmt.Print(string(out))
 			if err != nil {
-				fmt.Println(err)
+				commandErr = err
+				break
 			}
 		}
 	})
 
-	return nil
+	return commandErr
 }
 
 func run() error {
