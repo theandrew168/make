@@ -57,11 +57,9 @@ func execute(graph Graph, name string) error {
 			fields := strings.Fields(command)
 			cmd, args := fields[0], fields[1:]
 			out, err := exec.Command(cmd, args...).CombinedOutput()
+			fmt.Print(string(out))
 			if err != nil {
-				fmt.Print(string(out))
 				fmt.Println(err)
-			} else {
-				fmt.Print(string(out))
 			}
 		}
 	})
