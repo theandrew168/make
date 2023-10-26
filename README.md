@@ -22,9 +22,9 @@ go run github.com/theandrew168/make@latest
 
 ## Features
 
-While not a _complete_ subset of POSIX make, this tool is still useful for utilizing simple Makefiles across all platforms.
+While not a _complete_ subset of POSIX make, this tool is still useful for utilizing simple Makefiles across all platforms:
 
 - Depends only on the [Go programming language](https://golang.org/dl/)
 - Automatic resolution of targets and dependencies
 - Executes with maximum concurrency while respecting dependency order
-- Implemented in a small and readable ~150 lines of code
+- Implemented in a small and readable [~150 lines of code](https://github.com/theandrew168/make/blob/main/make.go)
