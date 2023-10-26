@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"flag"
 	"fmt"
 	"os"
 	"os/exec"
@@ -69,8 +70,9 @@ func execute(graph Graph, name string) error {
 }
 
 func run() error {
-	// TODO: flags
-	fileName := "Makefile"
+	var fileName string
+	flag.StringVar(&fileName, "f", "Makefile", "Read file as Makefile")
+	flag.Parse()
 
 	file, err := os.Open(fileName)
 	if err != nil {
