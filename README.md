@@ -29,3 +29,4 @@ While not a _complete_ subset of POSIX make, this tool is still useful for utili
 - Executes with maximum concurrency while respecting dependency order
 - Implemented in a small and readable [~150 lines of code](https://github.com/theandrew168/make/blob/main/make.go)
 - Can bootstrap itself using this project's own [Makefile](https://github.com/theandrew168/make/blob/main/Makefile)
+- Built with love from a remote cabin in central Iowa
