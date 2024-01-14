@@ -16,19 +16,20 @@ import (
 type Target struct {
 	sync.Once
 
-	Prerequisites []string
-	Commands      []string
+	Dependencies []string
+	Commands     []string
 }
 
-func NewTarget(prerequisites []string) *Target {
+func NewTarget(dependencies []string) *Target {
 	t := Target{
-		Prerequisites: prerequisites,
+		Dependencies: dependencies,
 	}
 	return &t
 }
 
 type Graph map[string]*Target
 
+// Execute the target after recursively executing any dependencies.
 func execute(graph Graph, name string) error {
 	// lookup current target
 	target, ok := graph[name]
@@ -38,15 +39,15 @@ func execute(graph Graph, name string) error {
 
 	errors := make(chan error)
 
-	// execute any prerequisites (recursive call)
+	// execute any dependencies (recursive call)
 	var wg sync.WaitGroup
-	for _, preprequisite := range target.Prerequisites {
-		preprequisite := preprequisite
+	for _, dependency := range target.Dependencies {
+		dependency := dependency
 
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			err := execute(graph, preprequisite)
+			err := execute(graph, dependency)
 			if err != nil {
 				errors <- err
 			}
@@ -60,7 +61,7 @@ func execute(graph Graph, name string) error {
 		close(done)
 	}()
 
-	// check for errors / wait for prerequisites to finish
+	// check for errors / wait for dependencies to finish
 	select {
 	case <-done:
 	case err := <-errors:
@@ -108,14 +109,11 @@ func execute(graph Graph, name string) error {
 	return commandErr
 }
 
-func run() error {
-	var fileName string
-	flag.StringVar(&fileName, "f", "Makefile", "Read file as Makefile")
-	flag.Parse()
-
-	file, err := os.Open(fileName)
+// Read the lines of a text file.
+func readLines(name string) ([]string, error) {
+	file, err := os.Open(name)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer file.Close()
 
@@ -128,10 +126,15 @@ func run() error {
 
 	err = scanner.Err()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	graph := make(map[string]*Target)
+	return lines, nil
+}
+
+// Build a graph of targets from the lines of a Makefile.
+func buildGraph(lines []string) (Graph, error) {
+	graph := make(Graph)
 
 	var current string
 	for _, line := range lines {
@@ -152,7 +155,7 @@ func run() error {
 		if line[0] == '\t' {
 			target, ok := graph[current]
 			if !ok {
-				return fmt.Errorf("target does not exist: %s", current)
+				return nil, fmt.Errorf("target does not exist: %s", current)
 			}
 
 			command := strings.TrimSpace(line)
@@ -161,14 +164,32 @@ func run() error {
 			continue
 		}
 
-		// create target and add prerequisites
+		// create target and add dependencies
 		fields := strings.Fields(line)
-		name, prerequisites := fields[0], fields[1:]
+		name, dependencies := fields[0], fields[1:]
 		name, _ = strings.CutSuffix(name, ":")
-		graph[name] = NewTarget(prerequisites)
+		graph[name] = NewTarget(dependencies)
 
 		// update current target
 		current = name
+	}
+
+	return graph, nil
+}
+
+func run() error {
+	var fileName string
+	flag.StringVar(&fileName, "f", "Makefile", "Read file as Makefile")
+	flag.Parse()
+
+	lines, err := readLines(fileName)
+	if err != nil {
+		return err
+	}
+
+	graph, err := buildGraph(lines)
+	if err != nil {
+		return err
 	}
 
 	name := "default"
