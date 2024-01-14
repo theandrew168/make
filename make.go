@@ -13,6 +13,9 @@ import (
 // POSIX make spec:
 // https://pubs.opengroup.org/onlinepubs/9699919799/utilities/make.html
 
+// A target is a list of commands with possible dependencies
+// (referenced via names). The `sync.Once` is used to ensure
+// that each target is only executed a single time.
 type Target struct {
 	sync.Once
 
@@ -27,7 +30,76 @@ func NewTarget(dependencies []string) *Target {
 	return &t
 }
 
+// The "graph" here is really just a mapping of names to targets.
 type Graph map[string]*Target
+
+// Read the lines of a text file.
+func readLines(name string) ([]string, error) {
+	file, err := os.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	var lines []string
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		lines = append(lines, line)
+	}
+
+	err = scanner.Err()
+	if err != nil {
+		return nil, err
+	}
+
+	return lines, nil
+}
+
+// Build a graph of targets from the lines of a Makefile.
+func buildGraph(lines []string) (Graph, error) {
+	graph := make(Graph)
+
+	var current string
+	for _, line := range lines {
+		// ignore empty lines
+		if len(line) == 0 {
+			continue
+		}
+		// ignore comments
+		if line[0] == '#' {
+			continue
+		}
+		// ignore dot directives
+		if line[0] == '.' {
+			continue
+		}
+
+		// add commands to the current target
+		if line[0] == '\t' {
+			target, ok := graph[current]
+			if !ok {
+				return nil, fmt.Errorf("target does not exist: %s", current)
+			}
+
+			command := strings.TrimSpace(line)
+			target.Commands = append(target.Commands, command)
+
+			continue
+		}
+
+		// create target and add dependencies
+		fields := strings.Fields(line)
+		name, dependencies := fields[0], fields[1:]
+		name, _ = strings.CutSuffix(name, ":")
+		graph[name] = NewTarget(dependencies)
+
+		// update current target
+		current = name
+	}
+
+	return graph, nil
+}
 
 // Execute the target after recursively executing any dependencies.
 func execute(graph Graph, name string) error {
@@ -107,74 +179,6 @@ func execute(graph Graph, name string) error {
 	})
 
 	return commandErr
-}
-
-// Read the lines of a text file.
-func readLines(name string) ([]string, error) {
-	file, err := os.Open(name)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	var lines []string
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := scanner.Text()
-		lines = append(lines, line)
-	}
-
-	err = scanner.Err()
-	if err != nil {
-		return nil, err
-	}
-
-	return lines, nil
-}
-
-// Build a graph of targets from the lines of a Makefile.
-func buildGraph(lines []string) (Graph, error) {
-	graph := make(Graph)
-
-	var current string
-	for _, line := range lines {
-		// ignore empty lines
-		if len(line) == 0 {
-			continue
-		}
-		// ignore comments
-		if line[0] == '#' {
-			continue
-		}
-		// ignore dot directives
-		if line[0] == '.' {
-			continue
-		}
-
-		// add commands to the current target
-		if line[0] == '\t' {
-			target, ok := graph[current]
-			if !ok {
-				return nil, fmt.Errorf("target does not exist: %s", current)
-			}
-
-			command := strings.TrimSpace(line)
-			target.Commands = append(target.Commands, command)
-
-			continue
-		}
-
-		// create target and add dependencies
-		fields := strings.Fields(line)
-		name, dependencies := fields[0], fields[1:]
-		name, _ = strings.CutSuffix(name, ":")
-		graph[name] = NewTarget(dependencies)
-
-		// update current target
-		current = name
-	}
-
-	return graph, nil
 }
 
 func run() error {
