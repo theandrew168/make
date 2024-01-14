@@ -101,46 +101,8 @@ func buildGraph(lines []string) (Graph, error) {
 	return graph, nil
 }
 
-// Execute the target after recursively executing any dependencies.
-func execute(graph Graph, name string) error {
-	// lookup current target
-	target, ok := graph[name]
-	if !ok {
-		return fmt.Errorf("target does not exist: %s", name)
-	}
-
-	errors := make(chan error)
-
-	// execute any dependencies (recursive call)
-	var wg sync.WaitGroup
-	for _, dependency := range target.Dependencies {
-		dependency := dependency
-
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			err := execute(graph, dependency)
-			if err != nil {
-				errors <- err
-			}
-		}()
-	}
-
-	// turn wg.Wait() into a select-able channel
-	done := make(chan struct{})
-	go func() {
-		wg.Wait()
-		close(done)
-	}()
-
-	// check for errors / wait for dependencies to finish
-	select {
-	case <-done:
-	case err := <-errors:
-		return err
-	}
-
-	// execute current target (base case)
+// Execute a target's commands and return any errors.
+func executeCommands(target *Target) error {
 	var commandErr error
 	target.Do(func() {
 		for _, command := range target.Commands {
@@ -177,8 +139,51 @@ func execute(graph Graph, name string) error {
 			}
 		}
 	})
-
 	return commandErr
+}
+
+// Execute the target after recursively executing any dependencies.
+func execute(graph Graph, name string) error {
+	// lookup current target by name
+	target, ok := graph[name]
+	if !ok {
+		return fmt.Errorf("target does not exist: %s", name)
+	}
+
+	// create a channel for receiving errors from dependencies
+	errors := make(chan error)
+
+	// recursively execute all dependencies
+	var wg sync.WaitGroup
+	for _, dependency := range target.Dependencies {
+		dependency := dependency
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			err := execute(graph, dependency)
+			if err != nil {
+				errors <- err
+			}
+		}()
+	}
+
+	// turn wg.Wait() into a select-able channel
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	// wait for dependencies to finish / check for errors
+	select {
+	case <-done:
+	case err := <-errors:
+		return err
+	}
+
+	// execute the current target's commands
+	return executeCommands(target)
 }
 
 func run() error {
